@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-04-09
+
+### Added
+
+- Freeform body support — bodies with `additionalProperties` but no explicit `properties` now expose a `body` param
+- OpenAPI 3.1 nullable syntax — `type: ["string", "null"]` handled as nullable in Zod schemas
+
+### Fixed
+
+- `compactSchema` (tokenOptimization) now preserves `oneOf`, `anyOf`, `nullable`, `default`, and `additionalProperties` keys
+- Properties with `readOnly: true` are now optional in Zod validation (server-generated fields shouldn't be required from clients)
+- Properties with `default` values are now optional in Zod validation
+- Nested `allOf` (allOf within allOf) now recursively flattens all inner properties
+
 ## [0.3.0] - 2026-04-09
 
 ### Added

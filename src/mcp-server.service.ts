@@ -122,6 +122,8 @@ export class McpServerService {
     if (['post', 'put', 'patch', 'delete'].includes(tool.method)) {
       if (tool.isArrayBody && args['items'] !== undefined) {
         init.body = JSON.stringify(args['items']);
+      } else if (tool.isFreeformBody && args['body'] !== undefined) {
+        init.body = JSON.stringify(args['body']);
       } else {
         const body: Record<string, unknown> = {};
         for (const paramName of tool.bodyParams) {
