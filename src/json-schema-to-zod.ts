@@ -9,6 +9,9 @@ export interface JsonSchemaProperty {
   $ref?: string;
   nullable?: boolean;
   allOf?: JsonSchemaProperty[];
+  oneOf?: JsonSchemaProperty[];
+  anyOf?: JsonSchemaProperty[];
+  additionalProperties?: boolean | JsonSchemaProperty;
 }
 
 export function jsonSchemaToZod(schema: JsonSchemaProperty): z.ZodTypeAny {

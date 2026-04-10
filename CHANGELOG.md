@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-04-09
+
+### Added
+
+- `oneOf` and `anyOf` schema composition support — properties from all sub-schemas are merged into the tool input
+- Sibling `properties` alongside `allOf`/`oneOf`/`anyOf` are now included in the tool schema
+- Enum value merging for discriminator fields in `oneOf`/`anyOf` unions
+
+### Fixed
+
+- Circular `$ref` no longer causes stack overflow — detected and gracefully replaced with `{ type: "object" }`
+- `oneOf`/`anyOf` body schemas no longer produce empty tool input schemas
+- `allOf` with sibling `properties` (e.g. `{ allOf: [...], properties: { bonus: ... } }`) now includes all fields
+
 ## [0.2.0] - 2026-04-09
 
 ### Fixed

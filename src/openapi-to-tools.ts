@@ -129,7 +129,12 @@ function resolveSchemaDeep(
 
   let resolved: JsonSchemaProperty = schema;
   if (resolved.$ref) {
-    resolved = resolveRef(doc, resolved, logger, new Set(refs))!;
+    if (refs.has(resolved.$ref)) {
+      (logger ?? console).warn(`Circular $ref detected in deep resolve: ${resolved.$ref}`);
+      return { type: 'object' };
+    }
+    refs.add(resolved.$ref);
+    resolved = resolveRef(doc, resolved, logger)!;
     if (!resolved) return undefined;
   }
 
@@ -147,10 +152,12 @@ function resolveSchemaDeep(
     resolved.items = resolveSchemaDeep(doc, resolved.items as JsonSchemaProperty, logger, new Set(refs)) ?? { type: 'string' };
   }
 
-  if (resolved.allOf) {
-    resolved.allOf = resolved.allOf.map(
-      (sub: JsonSchemaProperty) => resolveSchemaDeep(doc, sub, logger, new Set(refs)) ?? sub,
-    );
+  for (const key of ['allOf', 'oneOf', 'anyOf'] as const) {
+    if (resolved[key]) {
+      (resolved as Record<string, unknown>)[key] = (resolved[key] as JsonSchemaProperty[]).map(
+        (sub: JsonSchemaProperty) => resolveSchemaDeep(doc, sub, logger, new Set(refs)) ?? sub,
+      );
+    }
   }
 
   return resolved;
@@ -289,12 +296,26 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
         }
       }
 
-      if (bodySchema?.allOf) {
+      // Merge properties from allOf, oneOf, and anyOf sub-schemas
+      const compositeSchemas = [
+        ...(bodySchema?.allOf ?? []),
+        ...(bodySchema?.oneOf ?? []),
+        ...(bodySchema?.anyOf ?? []),
+      ];
+      if (compositeSchemas.length > 0) {
         const mergedProps: Record<string, JsonSchemaProperty> = {};
         const mergedRequired: string[] = [];
-        for (const sub of bodySchema.allOf) {
+        for (const sub of compositeSchemas) {
           if (sub?.properties) {
-            Object.assign(mergedProps, sub.properties);
+            for (const [k, v] of Object.entries(sub.properties)) {
+              if (mergedProps[k] && v.enum && mergedProps[k].enum) {
+                // Merge enum values for oneOf/anyOf discriminators
+                const combined = [...new Set([...mergedProps[k].enum!, ...v.enum])];
+                mergedProps[k] = { ...v, enum: combined };
+              } else {
+                mergedProps[k] = v;
+              }
+            }
           }
           if (sub?.required) {
             mergedRequired.push(...sub.required);
@@ -309,9 +330,19 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
             properties[propName] = propSchema ?? { type: 'string' };
             bodyParams.push(propName);
           }
-          if (mergedRequired.length > 0) {
+          // For allOf, all required fields apply; for oneOf/anyOf, none are strictly required
+          if (bodySchema?.allOf && mergedRequired.length > 0) {
             required.push(...mergedRequired);
           }
+        }
+      }
+
+      // Also merge sibling properties that sit alongside allOf/oneOf/anyOf
+      if (bodySchema?.properties && (bodySchema?.allOf || bodySchema?.oneOf || bodySchema?.anyOf)) {
+        for (const [propName, propSchema] of Object.entries(bodySchema.properties)) {
+          if (properties[propName] || pathParams.includes(propName) || queryParams.includes(propName)) continue;
+          properties[propName] = propSchema ?? { type: 'string' };
+          bodyParams.push(propName);
         }
       }
 
