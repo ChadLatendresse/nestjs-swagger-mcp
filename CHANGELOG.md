@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-04-09
+
+### Fixed
+
+- Deep `$ref` resolution: nested object schemas (e.g. 3+ levels of `$ref`) are now recursively resolved instead of collapsing to `type: "string"`
+- Top-level array request bodies (`@ApiBody({ type: [Dto] })`) now generate a proper `items` input property and send the array directly as the JSON body
+
 ## [0.1.0] - 2026-04-09
 
 ### Added

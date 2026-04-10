@@ -14,6 +14,7 @@ export interface ToolDefinition {
   pathParams: string[];
   queryParams: string[];
   bodyParams: string[];
+  isArrayBody: boolean;
 }
 
 interface OpenApiOperation {
@@ -115,6 +116,44 @@ function resolveRef(
   }
 
   return result;
+}
+
+function resolveSchemaDeep(
+  doc: OpenAPIObject,
+  schema: JsonSchemaProperty | undefined,
+  logger?: { warn: (msg: string) => void },
+  visited?: Set<string>,
+): JsonSchemaProperty | undefined {
+  if (!schema || typeof schema !== 'object') return schema;
+  const refs = visited ?? new Set<string>();
+
+  let resolved: JsonSchemaProperty = schema;
+  if (resolved.$ref) {
+    resolved = resolveRef(doc, resolved, logger, new Set(refs))!;
+    if (!resolved) return undefined;
+  }
+
+  resolved = { ...resolved };
+
+  if (resolved.properties) {
+    const newProps: Record<string, JsonSchemaProperty> = {};
+    for (const [key, propSchema] of Object.entries(resolved.properties)) {
+      newProps[key] = resolveSchemaDeep(doc, propSchema, logger, new Set(refs)) ?? { type: 'string' };
+    }
+    resolved.properties = newProps;
+  }
+
+  if (resolved.items) {
+    resolved.items = resolveSchemaDeep(doc, resolved.items as JsonSchemaProperty, logger, new Set(refs)) ?? { type: 'string' };
+  }
+
+  if (resolved.allOf) {
+    resolved.allOf = resolved.allOf.map(
+      (sub: JsonSchemaProperty) => resolveSchemaDeep(doc, sub, logger, new Set(refs)) ?? sub,
+    );
+  }
+
+  return resolved;
 }
 
 function deduplicateNames(tools: ToolDefinition[]): void {
@@ -223,8 +262,18 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
       const rawBodySchema = operation.requestBody?.content?.[
         'application/json'
       ]?.schema as JsonSchemaProperty | undefined;
-      const bodySchema = resolveRef(doc, rawBodySchema, log);
-      if (bodySchema?.properties) {
+      const bodySchema = resolveSchemaDeep(doc, rawBodySchema, log);
+      let isArrayBody = false;
+
+      if (bodySchema?.type === 'array' && bodySchema?.items) {
+        isArrayBody = true;
+        properties['items'] = {
+          type: 'array',
+          items: bodySchema.items as JsonSchemaProperty,
+        };
+        required.push('items');
+        bodyParams.push('items');
+      } else if (bodySchema?.properties) {
         for (const [propName, propSchema] of Object.entries(
           bodySchema.properties,
         )) {
@@ -232,9 +281,7 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
             log.warn(`Body property "${propName}" collides with path/query param in ${method.toUpperCase()} ${path}, skipping body property`);
             continue;
           }
-          // Resolve $ref in individual properties
-          const resolved = propSchema.$ref ? resolveRef(doc, propSchema, log) : propSchema;
-          properties[propName] = resolved ?? { type: 'string' };
+          properties[propName] = propSchema ?? { type: 'string' };
           bodyParams.push(propName);
         }
         if (bodySchema.required) {
@@ -242,28 +289,24 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
         }
       }
 
-      // Resolve $ref inside allOf entries
       if (bodySchema?.allOf) {
         const mergedProps: Record<string, JsonSchemaProperty> = {};
         const mergedRequired: string[] = [];
         for (const sub of bodySchema.allOf) {
-          const resolved = sub.$ref ? resolveRef(doc, sub, log) : sub;
-          if (resolved?.properties) {
-            Object.assign(mergedProps, resolved.properties);
+          if (sub?.properties) {
+            Object.assign(mergedProps, sub.properties);
           }
-          if (resolved?.required) {
-            mergedRequired.push(...resolved.required);
+          if (sub?.required) {
+            mergedRequired.push(...sub.required);
           }
         }
-        // Treat merged allOf as the body schema
         if (Object.keys(mergedProps).length > 0) {
           for (const [propName, propSchema] of Object.entries(mergedProps)) {
             if (pathParams.includes(propName) || queryParams.includes(propName)) {
               log.warn(`Body property "${propName}" collides with path/query param in ${method.toUpperCase()} ${path}, skipping body property`);
               continue;
             }
-            const resolved = propSchema.$ref ? resolveRef(doc, propSchema, log) : propSchema;
-            properties[propName] = resolved ?? { type: 'string' };
+            properties[propName] = propSchema ?? { type: 'string' };
             bodyParams.push(propName);
           }
           if (mergedRequired.length > 0) {
@@ -285,6 +328,7 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
         pathParams,
         queryParams,
         bodyParams,
+        isArrayBody,
       });
     }
   }
