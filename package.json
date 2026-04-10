@@ -1,0 +1,79 @@
+{
+  "name": "nestjs-swagger-mcp",
+  "version": "0.1.0",
+  "description": "Auto-generate MCP tools from NestJS Swagger/OpenAPI specs",
+  "author": "Chad Latendresse",
+  "license": "MIT",
+  "engines": { "node": ">=18.0.0" },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ChadLatendresse/nestjs-swagger-mcp"
+  },
+  "homepage": "https://github.com/ChadLatendresse/nestjs-swagger-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/ChadLatendresse/nestjs-swagger-mcp/issues"
+  },
+  "keywords": [
+    "nestjs",
+    "mcp",
+    "openapi",
+    "swagger",
+    "model-context-protocol",
+    "ai",
+    "tools"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
+    "test": "jest --no-cache"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/swagger": "^11.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11.0.1",
+    "@nestjs/core": "^11.0.1",
+    "@nestjs/swagger": "^11.2.7",
+    "@nestjs/testing": "^11.1.18",
+    "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
+    "jest": "^30.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.3"
+  },
+  "jest": {
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
+    "rootDir": ".",
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "testEnvironment": "node"
+  }
+}
