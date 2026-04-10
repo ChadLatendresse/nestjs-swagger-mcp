@@ -12,10 +12,20 @@ export interface JsonSchemaProperty {
   oneOf?: JsonSchemaProperty[];
   anyOf?: JsonSchemaProperty[];
   additionalProperties?: boolean | JsonSchemaProperty;
+  default?: unknown;
 }
 
 export function jsonSchemaToZod(schema: JsonSchemaProperty): z.ZodTypeAny {
   let result: z.ZodTypeAny;
+
+  // Handle OpenAPI 3.1 type arrays like ["string", "null"]
+  if (Array.isArray(schema.type)) {
+    const types = schema.type as string[];
+    const isNullable = types.includes('null');
+    const nonNullType = types.find((t) => t !== 'null') ?? 'string';
+    const inner = jsonSchemaToZod({ ...schema, type: nonNullType });
+    return isNullable ? inner.nullable() : inner;
+  }
 
   // Handle allOf by merging properties from all sub-schemas
   if (schema.allOf && schema.allOf.length > 0) {
@@ -85,7 +95,9 @@ export function jsonSchemaToZod(schema: JsonSchemaProperty): z.ZodTypeAny {
         const required = schema.required ?? [];
         for (const [key, propSchema] of Object.entries(schema.properties)) {
           const zodType = jsonSchemaToZod(propSchema);
-          shape[key] = required.includes(key) ? zodType : zodType.optional();
+          const hasDefault = 'default' in propSchema;
+          const isReadOnly = (propSchema as Record<string, unknown>).readOnly === true;
+          shape[key] = required.includes(key) && !hasDefault && !isReadOnly ? zodType : zodType.optional();
         }
         result = z.object(shape);
         break;

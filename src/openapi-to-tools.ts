@@ -15,6 +15,7 @@ export interface ToolDefinition {
   queryParams: string[];
   bodyParams: string[];
   isArrayBody: boolean;
+  isFreeformBody: boolean;
 }
 
 interface OpenApiOperation {
@@ -180,7 +181,7 @@ function deduplicateNames(tools: ToolDefinition[]): void {
 }
 
 function compactSchema(properties: Record<string, JsonSchemaProperty>): Record<string, JsonSchemaProperty> {
-  const STRUCTURAL_KEYS = new Set(['type', 'properties', 'items', 'required', 'enum', 'allOf']);
+  const STRUCTURAL_KEYS = new Set(['type', 'properties', 'items', 'required', 'enum', 'allOf', 'oneOf', 'anyOf', 'nullable', 'default', 'additionalProperties']);
   const compacted: Record<string, JsonSchemaProperty> = {};
   for (const [key, value] of Object.entries(properties)) {
     const compact: JsonSchemaProperty = {};
@@ -271,6 +272,7 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
       ]?.schema as JsonSchemaProperty | undefined;
       const bodySchema = resolveSchemaDeep(doc, rawBodySchema, log);
       let isArrayBody = false;
+      let isFreeformBody = false;
 
       if (bodySchema?.type === 'array' && bodySchema?.items) {
         isArrayBody = true;
@@ -294,22 +296,28 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
         if (bodySchema.required) {
           required.push(...bodySchema.required);
         }
+      } else if (bodySchema?.type === 'object' && !bodySchema?.allOf && !bodySchema?.oneOf && !bodySchema?.anyOf) {
+        // Freeform body — object with no explicit properties (may have additionalProperties)
+        isFreeformBody = true;
+        properties['body'] = { type: 'object' };
+        bodyParams.push('body');
       }
 
-      // Merge properties from allOf, oneOf, and anyOf sub-schemas
-      const compositeSchemas = [
-        ...(bodySchema?.allOf ?? []),
-        ...(bodySchema?.oneOf ?? []),
-        ...(bodySchema?.anyOf ?? []),
-      ];
-      if (compositeSchemas.length > 0) {
-        const mergedProps: Record<string, JsonSchemaProperty> = {};
-        const mergedRequired: string[] = [];
-        for (const sub of compositeSchemas) {
+      // Recursively collect properties from allOf, oneOf, and anyOf sub-schemas
+      function collectCompositeProps(
+        schema: JsonSchemaProperty,
+        mergedProps: Record<string, JsonSchemaProperty>,
+        mergedRequired: string[],
+      ): void {
+        const subs = [
+          ...(schema.allOf ?? []),
+          ...(schema.oneOf ?? []),
+          ...(schema.anyOf ?? []),
+        ];
+        for (const sub of subs) {
           if (sub?.properties) {
             for (const [k, v] of Object.entries(sub.properties)) {
               if (mergedProps[k] && v.enum && mergedProps[k].enum) {
-                // Merge enum values for oneOf/anyOf discriminators
                 const combined = [...new Set([...mergedProps[k].enum!, ...v.enum])];
                 mergedProps[k] = { ...v, enum: combined };
               } else {
@@ -320,7 +328,17 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
           if (sub?.required) {
             mergedRequired.push(...sub.required);
           }
+          // Recurse into nested composite schemas
+          if (sub?.allOf || sub?.oneOf || sub?.anyOf) {
+            collectCompositeProps(sub, mergedProps, mergedRequired);
+          }
         }
+      }
+
+      if (bodySchema?.allOf || bodySchema?.oneOf || bodySchema?.anyOf) {
+        const mergedProps: Record<string, JsonSchemaProperty> = {};
+        const mergedRequired: string[] = [];
+        collectCompositeProps(bodySchema, mergedProps, mergedRequired);
         if (Object.keys(mergedProps).length > 0) {
           for (const [propName, propSchema] of Object.entries(mergedProps)) {
             if (pathParams.includes(propName) || queryParams.includes(propName)) {
@@ -330,7 +348,6 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
             properties[propName] = propSchema ?? { type: 'string' };
             bodyParams.push(propName);
           }
-          // For allOf, all required fields apply; for oneOf/anyOf, none are strictly required
           if (bodySchema?.allOf && mergedRequired.length > 0) {
             required.push(...mergedRequired);
           }
@@ -360,6 +377,7 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
         queryParams,
         bodyParams,
         isArrayBody,
+        isFreeformBody,
       });
     }
   }
