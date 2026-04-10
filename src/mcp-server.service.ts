@@ -120,14 +120,18 @@ export class McpServerService {
 
     // Body params go to request body for methods that support it
     if (['post', 'put', 'patch', 'delete'].includes(tool.method)) {
-      const body: Record<string, unknown> = {};
-      for (const paramName of tool.bodyParams) {
-        if (args[paramName] !== undefined) {
-          body[paramName] = args[paramName];
+      if (tool.isArrayBody && args['items'] !== undefined) {
+        init.body = JSON.stringify(args['items']);
+      } else {
+        const body: Record<string, unknown> = {};
+        for (const paramName of tool.bodyParams) {
+          if (args[paramName] !== undefined) {
+            body[paramName] = args[paramName];
+          }
         }
-      }
-      if (Object.keys(body).length > 0) {
-        init.body = JSON.stringify(body);
+        if (Object.keys(body).length > 0) {
+          init.body = JSON.stringify(body);
+        }
       }
     }
 
