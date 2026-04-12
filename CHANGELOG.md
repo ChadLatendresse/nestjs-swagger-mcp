@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-04-12
+
+### Added
+
+- Hot-reload of MCP tools — `McpModule.setup()` accepts a `documentFactory: () => OpenAPIObject` so the OpenAPI spec can be re-derived after `ts-node-dev --respawn` / `nest start --watch` without a client reconnect
+- `McpServerService.refreshTools()` — re-runs `openApiToTools()` and swaps in the new set, logging an added/removed diff
+- `hotReload` option (default on outside production) — `handleRequest()` refreshes tools at the top of each MCP call, throttled by `hotReloadTtlMs` (default `1000`)
+- `POST /mcp/refresh` admin endpoint to force a rescan, guarded by the `adminRefresh` option (defaults to `hotReload`) and optional `adminRefreshToken` header check (`x-mcp-refresh-token`)
+
+### Changed
+
+- `McpSetupOptions.document` is now optional; prefer `documentFactory`. Passing `document` still works and is wrapped in a factory internally
+
 ## [0.4.0] - 2026-04-09
 
 ### Added

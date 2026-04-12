@@ -55,13 +55,13 @@ async function bootstrap() {
     .setTitle('My API')
     .setVersion('1.0')
     .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+  const documentFactory = () => SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api', app, documentFactory);
 
   await app.listen(3000);
 
-  // Initialize MCP tools from the OpenAPI document
-  await McpModule.setup(app, { document });
+  // Pass the same factory so MCP tools can be re-derived on demand.
+  await McpModule.setup(app, { documentFactory });
 }
 bootstrap();
 ```
@@ -81,15 +81,28 @@ That's it. Your API is now accessible via MCP at `POST /mcp`.
 | `forwardHeaders` | `string[]` | *none* | Headers to pass from MCP request to API calls |
 | `nameFormatter` | `(ctx) => string` | *auto* | Custom tool naming function (see below) |
 | `tokenOptimization` | `{ compactSchemas?, maxDescriptionLength? }` | *none* | Reduce token usage for LLM clients |
+| `hotReload` | `boolean` | `true` outside production | Re-derive the OpenAPI spec on each MCP request so tool definitions track code changes |
+| `hotReloadTtlMs` | `number` | `1000` | Minimum ms between rescans; bursty requests reuse the last scan |
+| `adminRefresh` | `boolean` | same as `hotReload` | Expose `POST /mcp/refresh` to force a tool rescan |
+| `adminRefreshToken` | `string` | *none* | If set, `POST /mcp/refresh` requires header `x-mcp-refresh-token: <token>` |
 
 ### `McpModule.setup(app, options)`
 
-Call after `app.listen()`. Pass the OpenAPI document to generate tools.
+Call after `app.listen()`. Pass a document factory (preferred) so the spec can be rebuilt on demand.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `document` | `OpenAPIObject` | *required* | OpenAPI document from `SwaggerModule.createDocument()` |
+| `documentFactory` | `() => OpenAPIObject` | *one of these required* | Factory that rebuilds the OpenAPI document — enables hot-reload |
+| `document` | `OpenAPIObject` | *one of these required* | Pre-built OpenAPI document (frozen; no hot-reload) |
 | `baseUrl` | `string` | auto-detected | Base URL for proxied API calls |
+
+### Dev workflow / hot reload
+
+- Pass `documentFactory: () => SwaggerModule.createDocument(app, config)` to `McpModule.setup()`.
+- On each `POST /mcp` request (throttled by `hotReloadTtlMs`), the service re-runs the factory and regenerates tools. Because the transport is stateless and every request already creates a fresh `McpServer`, the next MCP call picks up new endpoints with **zero client reconnect**.
+- This is most useful when routes change *within* a running process (dynamic controllers, HMR). With `ts-node-dev --respawn` / `nest start --watch` the whole process restarts and the spec is rebuilt at bootstrap anyway — the stateless transport still means clients don't need to reconnect.
+- For explicit triggers, `POST /mcp/refresh` calls `refreshTools()` and returns `{ added, removed, total }`. Set `adminRefreshToken` to require a header (`x-mcp-refresh-token`) on that endpoint.
+- `hotReload` auto-disables when `NODE_ENV === 'production'`; set it explicitly to override.
 
 ## Examples
 
