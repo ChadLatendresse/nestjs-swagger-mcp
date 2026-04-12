@@ -1,7 +1,11 @@
 import { DynamicModule, Module, Type, type INestApplication } from '@nestjs/common';
 import { McpController } from './mcp.controller';
 import { McpServerService } from './mcp-server.service';
-import { MCP_MODULE_OPTIONS, type McpModuleOptions, type McpSetupOptions } from './mcp-config';
+import {
+  MCP_MODULE_OPTIONS,
+  type McpModuleOptions,
+  type McpSetupOptions,
+} from './mcp-config';
 
 export interface McpModuleAsyncOptions {
   imports?: Array<Type | DynamicModule>;
@@ -45,6 +49,14 @@ export class McpModule {
   ): Promise<void> {
     const service = app.get(McpServerService);
     const baseUrl = options.baseUrl ?? (await app.getUrl());
-    service.initialize(options.document, baseUrl);
+    const factory =
+      options.documentFactory ??
+      (options.document ? () => options.document! : undefined);
+    if (!factory) {
+      throw new Error(
+        'McpModule.setup: provide either `documentFactory` (preferred, enables hot-reload) or `document`.',
+      );
+    }
+    service.initialize(factory, baseUrl);
   }
 }
