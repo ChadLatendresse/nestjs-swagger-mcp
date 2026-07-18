@@ -247,14 +247,24 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
       const queryParams: string[] = [];
       const bodyParams: string[] = [];
 
-      const resolvedParams = (operation.parameters ?? []).map((p) => {
+      const pathParameters = (
+        pathItem as { parameters?: OpenApiOperation['parameters'] }
+      ).parameters ?? [];
+      const resolvedParams = [
+        ...pathParameters,
+        ...(operation.parameters ?? []),
+      ].map((p) => {
         if ('$ref' in p) {
           return resolveRef(doc, p as unknown as JsonSchemaProperty, log) as unknown as typeof p;
         }
         return p;
       }).filter(Boolean);
-
+      const effectiveParams = new Map<string, (typeof resolvedParams)[number]>();
       for (const param of resolvedParams) {
+        effectiveParams.set(`${param.in}:${param.name}`, param);
+      }
+
+      for (const param of effectiveParams.values()) {
         if (param.in === 'header' || param.in === 'cookie') continue;
         properties[param.name] = (param.schema as JsonSchemaProperty | undefined) ?? { type: 'string' };
         if (param.required) {
@@ -297,7 +307,7 @@ export function openApiToTools(doc: OpenAPIObject, options?: OpenApiToToolsOptio
           required.push(...bodySchema.required);
         }
       } else if (bodySchema?.type === 'object' && !bodySchema?.allOf && !bodySchema?.oneOf && !bodySchema?.anyOf) {
-        // Freeform body — object with no explicit properties (may have additionalProperties)
+        // Freeform body - object with no explicit properties (may have additionalProperties)
         isFreeformBody = true;
         properties['body'] = { type: 'object' };
         bodyParams.push('body');
