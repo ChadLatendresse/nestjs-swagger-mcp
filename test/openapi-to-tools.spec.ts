@@ -163,7 +163,12 @@ describe('openApiToTools', () => {
   it('should build tools from Xquik OpenAPI 3.1 search fixture', () => {
     const xquikDoc = {
       openapi: '3.1.0',
-      info: { title: 'Xquik API', version: '1.0' },
+      info: {
+        title: 'Xquik API',
+        version: '1.0.0',
+        description:
+          'Xquik is an independent third-party service. Not affiliated with X Corp. "Twitter" and "X" are trademarks of X Corp.',
+      },
       servers: [{ url: 'https://xquik.com' }],
       security: [{ apiKey: [] }],
       paths: {
@@ -379,6 +384,53 @@ describe('openApiToTools', () => {
     expect(getTool.inputSchema.properties).toHaveProperty('id');
     expect(getTool.inputSchema.required).toContain('id');
     expect(getTool.pathParams).toContain('id');
+  });
+
+  it('should inherit path-level parameters and apply operation overrides', () => {
+    const doc = {
+      openapi: '3.0.0',
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/items/{id}': {
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'string' },
+            },
+            {
+              name: 'locale',
+              in: 'query',
+              schema: { type: 'string', enum: ['en'] },
+            },
+          ],
+          get: {
+            tags: ['items'],
+            operationId: 'getItem',
+            parameters: [
+              {
+                name: 'locale',
+                in: 'query',
+                required: true,
+                schema: { type: 'string', enum: ['en', 'fr'] },
+              },
+            ],
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      },
+    } as unknown as OpenAPIObject;
+
+    const tool = openApiToTools(doc)[0];
+
+    expect(tool.pathParams).toEqual(['id']);
+    expect(tool.queryParams).toEqual(['locale']);
+    expect(tool.inputSchema.required).toEqual(['id', 'locale']);
+    expect(tool.inputSchema.properties.locale).toEqual({
+      type: 'string',
+      enum: ['en', 'fr'],
+    });
   });
 
   it('should preserve nested structure when compactSchemas is true', () => {
